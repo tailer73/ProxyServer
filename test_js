@@ -1,0 +1,3 @@
+<script type="text/javascript">
+	alert("Injected JavaScript code!!!");
+</script>
