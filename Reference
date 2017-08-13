@@ -1,0 +1,17 @@
+#Install
+- pip3 install tornado
+-
+
+
+
+Description
+# parser = argparse.ArgumentParser(description="Мдуль ProxyServer может работать в двух режимах \
+    #                                              1. JavaScript Injection \
+    #                                              2. SSL Strip. Если режим не задан он работает штатно.")
+    # parser.add_argument('-p', '--port', default=8080, type=int, help='Порт на котором будет работать прокси-сервер.')
+    # parser.add_argument('-m', '--mode', default=None, type=str, help='Задает режим работы прокси-сервера. \
+    #                     Если mode=jsinj, прокси-сервер к ответам пользователям будет добавлять JavaScript, \
+    #                     который задается в параметре -j')
+    # parser.add_argument('-j', '--jscript', default=None, type=str, help="Указываем файл с JavaScript, который выполнится в \
+    #                     браузере пользователя. Пример test_js")
+    # args = parser.parse_args()
