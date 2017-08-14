@@ -104,9 +104,9 @@ class ProxyHandler(tornado.web.RequestHandler):
                     self.set_header('Content-Length', len(response.body) + len(self.jscript))
                     self.write(response.body + self.jscript)
                     # Отчет о внедрении JavaScript
-                    logging.info('JS INJECTED - Пользователю с IP: ' + self.request.remote_ip + 'JS внедрен',\
-                                filename=LoggingProxyServer.logging_file)
-                    print(LoggingProxyServer.logging_file)
+                    #logging.info('JS INJECTED - Пользователю с IP: ' + self.request.remote_ip + 'JS внедрен',\
+                    #            filename=LoggingProxyServer.logging_file)
+                    #print(LoggingProxyServer.logging_file)
                     #logging.info("Body response: {}".format(response.body))
                 elif response.body:
                     self.set_header('Content-Length', len(response.body))
@@ -320,7 +320,7 @@ class WorkerProxyServer:
 if __name__ == '__main__':
 
     config = Configuration()
-    config.setconfig(port=8080, mode=None, jscript=None)
+    config.setconfig(port=8080, mode='jsinj', jscript='test_js')
 
     workProxyServer = WorkerProxyServer()
     workProxyServer.start()

