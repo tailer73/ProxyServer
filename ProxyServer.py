@@ -26,7 +26,7 @@ dic_ip_user_agent = {}
 
 def setup_logger(logger_name, log_file, level=logging.INFO):
     l = logging.getLogger(logger_name)
-    formatter = logging.Formatter(u'[%(asctime)s] %(levelname)-8s  %(message)s (%(filename)s)')
+    formatter = logging.Formatter('[%(asctime)s] %(levelname)-8s  %(message)s (%(filename)s)')
     fileHandler = logging.FileHandler(log_file, mode='w')
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()
@@ -36,25 +36,15 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.addHandler(fileHandler)
     l.addHandler(streamHandler)
 
-# main.log
-PROXY_SERVER_MAIN = LOGS_DIR + u'main.log'
-setup_logger('MainLog', PROXY_SERVER_MAIN)
-main_proxy_server = logging.getLogger('MainLog')
-# hdlr_main = logging.FileHandler(PROXY_SERVER_MAIN)
-# formatter = logging.Formatter(u'[%(asctime)s] %(levelname)-8s  %(message)s (%(filename)s)')
-# hdlr_main.setFormatter(formatter)
-# main_proxy_server.addHandler(hdlr_main)
-# main_proxy_server.setLevel(logging.INFO)
+# my_main.log
+PROXY_SERVER_MAIN = LOGS_DIR + 'my_main.log'
+setup_logger('MyMainLog', PROXY_SERVER_MAIN)
+main_proxy_server = logging.getLogger('MyMainLog')
 
 # log_proxy_server.log
-LOG_PROXY_SERVER = LOGS_DIR + u'log_proxy_server.log'
-setup_logger('LogProxyServer', LOG_PROXY_SERVER, level=logging.DEBUG)
+LOG_PROXY_SERVER = LOGS_DIR + 'log_proxy_server.log'
+setup_logger('LogProxyServer', LOG_PROXY_SERVER)
 log_proxy_server = logging.getLogger('LogProxyServer')
-# hdlr_ps = logging.FileHandler(LOG_PROXY_SERVER)
-# formatter_ps = logging.Formatter(u'[%(asctime)s] %(levelname)-8s  %(message)s (%(filename)s)')
-# hdlr_ps.setFormatter(formatter_ps)
-# log_proxy_server.addHandler(hdlr_ps)
-# log_proxy_server.setLevel(logging.DEBUG)
 
 __all__ = ['ProxyHandler', 'run_proxy']
 
@@ -105,7 +95,7 @@ class ProxyHandler(tornado.web.RequestHandler):
         # Сбор статистики в лог файл
         global dic_ip_user_agent
         dic_ip_user_agent[self.request.remote_ip] = self.request.headers['User-Agent']
-        log_proxy_server.debug('МЕТОД %s URL %s', self.request.method, self.request.uri)
+        log_proxy_server.info('МЕТОД %s URL %s', self.request.method, self.request.uri)
 
         def handle_response(response):
             if (response.error and not isinstance(response.error, tornado.httpclient.HTTPError)):
@@ -114,27 +104,27 @@ class ProxyHandler(tornado.web.RequestHandler):
             else:
                 self.set_status(response.code, response.reason)
                 self._headers = tornado.httputil.HTTPHeaders()  # clear tornado default header
-                log_proxy_server.debug("ЗАГОЛОВОК ОТВЕТА: {}".format(response.headers.get_all()))
+                log_proxy_server.info("ЗАГОЛОВОК ОТВЕТА: {}".format(response.headers))
                 for header, v in response.headers.get_all():
                     if header not in ('Content-Length', 'Transfer-Encoding', 'Content-Encoding', 'Connection'):
                         self.add_header(header, v)  # some header appear multiple times, eg 'Set-Cookie'
 
-                log_proxy_server.debug("ЗАГОЛОВОК ЗАПРОСА: {}".format(self.request.headers))
+                log_proxy_server.info("ЗАГОЛОВОК ЗАПРОСА: {}".format(self.request.headers))
 
                 if (response.body and self.mode == 'jsinj'):
                     self.set_header('Content-Length', len(response.body) + len(self.jscript))
                     self.write(response.body + self.jscript)
                     # Отчет о внедрении JavaScript
                     main_proxy_server.info('JS INJECTED - Пользователю с IP: ' + self.request.remote_ip + 'JS внедрен')
-                    log_proxy_server.debug("ТЕЛО ОТВЕТА: {}".format(response.body))
+                    #log_proxy_server.debug("ТЕЛО ОТВЕТА: {}".format(response.body))
                 elif response.body:
                     self.set_header('Content-Length', len(response.body))
                     self.write(response.body)
-                    log_proxy_server.debug("ТЕЛО ОТВЕТА: {}".format(response.body))
+                    #log_proxy_server.info("ТЕЛО ОТВЕТА: {}".format(response.body))
             self.finish()
 
         body = self.request.body
-        log_proxy_server.debug("ТЕЛО ЗАПРОСА: {}".format(body))
+        #log_proxy_server.info("ТЕЛО ЗАПРОСА: {}".format(body))
         if not body:
             body = None
         try:
@@ -352,6 +342,3 @@ if __name__ == '__main__':
     workProxyServer.start()
     time.sleep(40)
     workProxyServer.stop()
-
-
-
